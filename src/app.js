@@ -8,7 +8,7 @@ app.set('sequelize', sequelize)
 app.set('models', sequelize.models)
 
 /**
- * FIX ME!
+ * FIXED!
  * @returns contract by id
  */
 app.get('/contracts/:id',getProfile ,async (req, res) =>{
@@ -113,11 +113,11 @@ app.get('/contracts',getProfile ,async (req, res) =>{
     
                 try {
     
-                    Profile.update({ balance: sequelize.literal(`balance - ${amount}`) }, { where: { id: id }}, { transaction: t });
+                    Profile.update({ balance: sequelize.literal(`balance - ${amount}`) }, { where: { id: id }}, { transaction: t }); //reduce client's balance
     
-                    Profile.update({ balance: sequelize.literal(`balance + ${amount}`) }, { where: { id: contractorId }}, { transaction: t });
+                    Profile.update({ balance: sequelize.literal(`balance + ${amount}`) }, { where: { id: contractorId }}, { transaction: t }); //increase contractor's balance
                     
-                    Job.update({ paid: 1 }, { where: { id: jobId }}, { transaction: t });
+                    Job.update({ paid: 1 }, { where: { id: jobId }}, { transaction: t }); //update job as paid
     
                     await t.commit();
     
@@ -214,6 +214,12 @@ app.get('/contracts',getProfile ,async (req, res) =>{
     const {Contract, Profile} = req.app.get('models')
     const {id, balance, type} = req.profile //retreive profile ID
     
+
+    // select sum(j.price) ,  p.profession, j. ContractId  from Jobs  j  left join Profiles p on j.ContractId=p.id
+    // where p.type = 'contractor'  and j.paid = 1
+    // group by  p.profession , j. ContractId
+    // order by   sum(j.price) desc;
+
 })
 
 
