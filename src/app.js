@@ -37,11 +37,6 @@ app.get('/contracts',getProfile ,async (req, res) =>{
     const {Contract} = req.app.get('models')
     const {id} = req.profile //retreive profile ID
 
-    // var condition = title ? { title: { [Op.like]: `%${title}%` } } : null;
-    // var condition = id ? { status: { [Op.notIn]: ['terminated'] }, [Op.or]: [ { ContractorId: id }, { ClientId: id }] } : null;
-    // console.log(condition);
-    // const contract = await Contract.findAll({where: {condition}})
-
     const contract = await Contract.findAll({
         where: {
             status: { [Op.notIn]: ['terminated'] },
@@ -80,6 +75,74 @@ app.get('/contracts',getProfile ,async (req, res) =>{
     res.json(job)
 })
 
+
+
+/**
+ * Pay for a job
+ * @returns response of payment (success or failure)
+ */
+ app.post('/jobs/:job_id/pay',getProfile ,async (req, res) =>{
+    const {Job} = req.app.get('models')
+    const {Contract, Profile} = req.app.get('models')
+    const {id, balance, type} = req.profile //retreive profile ID
+    job_id = req.params.job_id
+
+    var resp_code = "";
+    var resp_desc = "";
+
+    const job = await Job.findAll({
+        where: {id: job_id, paid: { [Op.is]: null },},
+        include: [{
+          model: Contract,
+          where: { status: 'in_progress', ClientId: id,},
+        }]
+      }).then(function(job_result) {
+        return job_result
+      })
+
+    if (job.length > 0) {
+        
+        if (type == 'client') {
+            const amount = job[0].price;
+            const contractorId = job[0].Contract.ContractorId;
+            const jobId = job[0].id;
+    
+            if (balance >= amount) {
+    
+                const t = await sequelize.transaction();
+    
+                try {
+    
+                    Profile.update({ balance: sequelize.literal(`balance - ${amount}`) }, { where: { id: id }}, { transaction: t });
+    
+                    Profile.update({ balance: sequelize.literal(`balance + ${amount}`) }, { where: { id: contractorId }}, { transaction: t });
+                    
+                    Job.update({ paid: 1 }, { where: { id: jobId }}, { transaction: t });
+    
+                    await t.commit();
+    
+                    resp_code = "000"
+                    resp_desc = `Payment of ${amount} for ${job[0].description} has been made successfully.`
+                  
+                } catch (error) {
+                    // If the execution reaches this line, an error was thrown.
+                    // We rollback the transaction.
+                    await t.rollback();
+    
+                    resp_code = "999"
+                    resp_desc = `Payment of ${amount} for ${job[0].description} failed. Please try again.`
+                }
+            }
+
+        }
+
+    }else{
+        resp_code = "001"
+        resp_desc = `No record found for this job`;
+    }
+    
+    res.json({ resp_code: resp_code, resp_desc: resp_desc});
+})
 
 
 /**
@@ -143,72 +206,17 @@ app.get('/contracts',getProfile ,async (req, res) =>{
 
 
 /**
- * Pay for a job
- * @returns response of payment (success or failure)
+ * Returns the profession that earned the most money (sum of jobs paid) for any contactor that worked in the query time range.
+ * @returns response of profession that earned the most money  (success or failure)
  */
- app.post('/jobs/:job_id/pay',getProfile ,async (req, res) =>{
+ app.post('/admin/best-profession?start=<date>&end=<date>',getProfile ,async (req, res) =>{
     const {Job} = req.app.get('models')
     const {Contract, Profile} = req.app.get('models')
     const {id, balance, type} = req.profile //retreive profile ID
-    job_id = req.params.job_id
-
-    var resp_code = "";
-    var resp_desc = "";
-
-    const job = await Job.findAll({
-        where: {id: job_id, paid: { [Op.is]: null },},
-        include: [{
-          model: Contract,
-          where: { status: 'in_progress', ClientId: id,},
-        }]
-      }).then(function(job_result) {
-        return job_result
-      })
-
-    if (job.length > 0) {
-        
-        if (type == 'client') {
-            const amount = job[0].price;
-            const contractorId = job[0].Contract.ContractorId;
-            const jobId = job[0].id;
-            console.log(amount);
     
-            if (balance >= amount) {
-                // console.log(`Client ${id} is about paying for job id ${job[0].id}, desc: ${job[0].description}. Current Balance: ${balance}, Job amount (amount to pay): ${amount}. Contractor ID: ${contractorId}`);
-    
-                const t = await sequelize.transaction();
-    
-                try {
-    
-                    Profile.update({ balance: sequelize.literal(`balance - ${amount}`) }, { where: { id: id }}, { transaction: t });
-    
-                    Profile.update({ balance: sequelize.literal(`balance + ${amount}`) }, { where: { id: contractorId }}, { transaction: t });
-                    
-                    Job.update({ paid: 1 }, { where: { id: jobId }}, { transaction: t });
-    
-                    await t.commit();
-    
-                    resp_code = "000"
-                    resp_desc = `Payment of ${amount} for ${job[0].description} has been made successfully.`
-                  
-                } catch (error) {
-                    // If the execution reaches this line, an error was thrown.
-                    // We rollback the transaction.
-                    await t.rollback();
-    
-                    resp_code = "999"
-                    resp_desc = `Payment of ${amount} for ${job[0].description} failed. Please try again.`
-                }
-            }
-
-        }
-
-    }else{
-        resp_code = "001"
-        resp_desc = `No record found for this job`;
-    }
-    
-    res.json({ resp_code: resp_code, resp_desc: resp_desc});
 })
+
+
+
 
 module.exports = app;
