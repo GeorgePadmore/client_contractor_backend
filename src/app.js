@@ -87,8 +87,7 @@ app.get('/contracts',getProfile ,async (req, res) =>{
     const {id, balance, type} = req.profile //retreive profile ID
     job_id = req.params.job_id
 
-    var resp_code = "";
-    var resp_desc = "";
+    var response = {}
 
     const job = await Job.findAll({
         where: {id: job_id, paid: { [Op.is]: null },},
@@ -121,27 +120,24 @@ app.get('/contracts',getProfile ,async (req, res) =>{
     
                     await t.commit();
     
-                    resp_code = "000"
-                    resp_desc = `Payment of ${amount} for ${job[0].description} has been made successfully.`
+                    response = {resp_code: "000", resp_desc: `Payment of ${amount} for ${job[0].description} has been made successfully.`}
                   
                 } catch (error) {
                     // If the execution reaches this line, an error was thrown.
                     // We rollback the transaction.
                     await t.rollback();
-    
-                    resp_code = "999"
-                    resp_desc = `Payment of ${amount} for ${job[0].description} failed. Please try again.`
+   
+                    response = {resp_code: "999", resp_desc: `Payment of ${amount} for ${job[0].description} failed. Please try again.`}
                 }
             }
 
         }
 
     }else{
-        resp_code = "001"
-        resp_desc = `No record found for this job`;
+        response = {resp_code: "001", resp_desc: `No record found for this job`}
     }
     
-    res.json({ resp_code: resp_code, resp_desc: resp_desc});
+    res.json(response);
 })
 
 
@@ -155,10 +151,11 @@ app.get('/contracts',getProfile ,async (req, res) =>{
     const {id, balance, type} = req.profile //retreive profile ID
     client_id = req.params.userId
     const deposit_amount = req.body.deposit_amount
-    let total_amount_unpaid = 0;
+    let total_amount_unpaid = 0
 
-    var resp_code = "";
-    var resp_desc = "";
+    var resp_code = ""
+    var resp_desc = ""
+    var response = {}
 
     const job = await Job.findAll({
         where: {paid: { [Op.is]: null },},
@@ -175,7 +172,10 @@ app.get('/contracts',getProfile ,async (req, res) =>{
         return job_result
       })
 
-      if (deposit_amount <= (0.25 * total_amount_unpaid) ) {
+      const total_job_percent = 0.25 * total_amount_unpaid
+      console.log(`total_job_percent = ${total_job_percent}`);
+
+      if (deposit_amount <= total_job_percent ) {
        
         const t = await sequelize.transaction();
     
@@ -185,23 +185,24 @@ app.get('/contracts',getProfile ,async (req, res) =>{
             
             await t.commit();
 
-            resp_code = "000"
-            resp_desc = `Deposit of ${deposit_amount} has been made successfully.`
+            response = {resp_code: "000", resp_desc: `Deposit of ${deposit_amount} has been made successfully.`}
             
         } catch (error) {
             // If the execution reaches this line, an error was thrown.
             // We rollback the transaction.
             await t.rollback();
 
-            resp_code = "999"
-            resp_desc = `Deposit of ${deposit_amount} failed. Please try again.`
+            response = {resp_code: "999", resp_desc: `Deposit of ${deposit_amount} failed. Please try again.`}
         }
 
+      }else {
+        response = {resp_code: "002", resp_desc: "Your deposit was unsuccessful"}
       }
 
     
-    res.json({ resp_code: resp_code, resp_desc: resp_desc});
+    res.json(response);
 })
+
 
 
 
@@ -209,20 +210,124 @@ app.get('/contracts',getProfile ,async (req, res) =>{
  * Returns the profession that earned the most money (sum of jobs paid) for any contactor that worked in the query time range.
  * @returns response of profession that earned the most money  (success or failure)
  */
- app.post('/admin/best-profession?start=<date>&end=<date>',getProfile ,async (req, res) =>{
+app.get('/admin/best-profession',getProfile ,async (req, res) =>{
     const {Job} = req.app.get('models')
     const {Contract, Profile} = req.app.get('models')
     const {id, balance, type} = req.profile //retreive profile ID
-    
+    const {start, end } = req.query
 
-    // select sum(j.price) ,  p.profession, j. ContractId  from Jobs  j  left join Profiles p on j.ContractId=p.id
-    // where p.type = 'contractor'  and j.paid = 1
-    // group by  p.profession , j. ContractId
-    // order by   sum(j.price) desc;
+    const startDate = WithoutTime(start);
+    const endDate = WithoutTime(end);
+    
+    var response = {}
+  
+    const job = await Job.findOne({
+      where: {
+        paid: 1,
+        "createdAt": {[Op.between] : [startDate , endDate ]} //date queries as '2022-02-02 00:00:00.000 +00:00' instead of '2022-02-02'
+      },
+      attributes: [
+        "Contract->Contractor.profession",
+          [sequelize.fn('sum', sequelize.col('price')), 'total_amount_paid'],
+      ],
+      order: [[sequelize.col('total_amount_paid'), 'DESC']],
+      include: [{
+        model: Contract,
+        // where: { status: 'terminated'},
+        include: [{
+          model: Profile,
+          as: 'Contractor',
+          where: { type: 'contractor'}
+          
+        }],
+      }],
+      group: ["Contract->Contractor.profession"],
+      
+      raw: true,
+    }).then(function(job_result) {
+
+      if (job_result) {
+        
+        console.log(job_result.profession);
+        response = {resp_code: "000", resp_desc: `Highest earning profession record found.`, profession: job_result.profession, total_amount: job_result.total_amount_paid}
+      }else{
+        response = {resp_code: "001", resp_desc: `Sorry, no record found for the specified date range. Please try again`}
+      }
+      
+    })
+
+    res.json(response)
 
 })
 
 
+
+
+/**
+ * returns the clients that paid the most for jobs in the query time period. limit query parameter should be applied, default limit is 2
+ * @returns array: resp_code, resp_desc, details: [{id, fullName, paid}]
+ */
+ app.get('/admin/best-clients',getProfile ,async (req, res) =>{
+  const {Job} = req.app.get('models')
+  const {Contract, Profile} = req.app.get('models')
+  const {id, balance, type} = req.profile //retreive profile ID
+  const {start, end, limit } = req.query
+
+  const startDate = WithoutTime(start);
+  const endDate = WithoutTime(end);
+  
+  var response = {}
+
+  const job = await Job.findAll({
+    where: {
+      paid: 1,
+      "createdAt": {[Op.between] : [startDate , endDate ]} //date queries as '2022-02-02 00:00:00.000 +00:00' instead of '2022-02-02'
+    },
+    attributes: [
+        "Contract.Client.id",
+        [sequelize.literal("firstName || ' ' || lastName"), 'fullName'],
+        [sequelize.fn('sum', sequelize.col('price')), 'paid'],
+    ],
+
+    order: [[sequelize.col('paid'), 'DESC']],
+    include: [{
+      model: Contract,
+      attributes: {exclude: ['id', 'terms', 'status', 'ContractorId', 'ClientId','createdAt', 'updatedAt']},
+      include: [{
+        model: Profile,
+        as: 'Client',
+        attributes: {exclude: ['id', 'firstName', 'lastName', 'profession', 'balance', 'type', 'createdAt', 'updatedAt']},
+        where: { type: 'client'}
+      }],
+    }],
+    group: ["Contract->Client.firstName"],
+    limit: parseInt(limit),
+    raw: true,
+  }).then(function(job_result) {
+
+    if (job_result) {
+      console.log(job_result);
+      response = job_result
+    }else{
+      response = job_result
+    }
+    
+  })
+
+  res.json(response)
+
+})
+
+
+function WithoutTime(dateTime) {
+
+  const t = new Date(dateTime);
+  const date = ('0' + t.getDate()).slice(-2);
+  const month = ('0' + (t.getMonth() + 1)).slice(-2);
+  const year = t.getFullYear();
+  const full_date = `${year}-${month}-${date}`
+  return full_date;
+}
 
 
 module.exports = app;
