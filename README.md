@@ -122,15 +122,3 @@ It would be great for example if you'd write some unit test / simple frontend de
 When you have finished the assignment, create a github repository and send us the link.
 
 Thank you and good luck! 🙏
-
-
-## Omissions / Wish to Include
-
-Due to time constraints, I couldn't complete `/admin/best-profession?start=<date>&end=<date>` and `/admin/best-clients?start=<date>&end=<date>&limit=<integer>`
-
-I would have implemented the following in addition:
-- Model-Controller structure in order to move a lot of the business logic in the controller and kept the app.js with less codes
-- I would have written some unit tests with Jest 
-
-
-
