@@ -6,7 +6,7 @@ const app = express();
 app.use(bodyParser.json());
 app.set('sequelize', sequelize)
 app.set('models', sequelize.models)
-const { ProcessGetContract, ProcessUserContracts, ProcessUserUnpaidJobs, ProcessPayJob, ProcessDepositMoney, ProcessMostEarnedProfession, ProcessBestPayingClient } = require("./controllers/contract.controller");
+const { ProcessGetContract, ProcessUserContracts, ProcessUserUnpaidJobs, ProcessPayJob, ProcessDepositMoney, ProcessMostEarnedProfession, ProcessBestPayingClient } = require("./controllers/controller");
 
 
 

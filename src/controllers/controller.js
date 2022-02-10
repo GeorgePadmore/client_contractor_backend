@@ -73,22 +73,22 @@ module.exports = {
 
         var response = {}
 
-        const job = await Job.findAll({
+        const job = await Job.findOne({
             where: {id: job_id, paid: { [Op.is]: null },},
             include: [{
-            model: Contract,
-            where: { status: 'in_progress', ClientId: id,},
+              model: Contract,
+              where: { status: 'in_progress', ClientId: id,},
             }]
         }).then(function(job_result) {
             return job_result
         })
 
-        if (job.length > 0) {
+        if (job) {
             
             if (type == 'client') {
-                const amount = job[0].price;
-                const contractorId = job[0].Contract.ContractorId;
-                const jobId = job[0].id;
+                const amount = job.price;
+                const contractorId = job.Contract.ContractorId;
+                const jobId = job.id;
         
                 if (balance >= amount) {
         
@@ -100,18 +100,18 @@ module.exports = {
         
                         Profile.update({ balance: sequelize.literal(`balance + ${amount}`) }, { where: { id: contractorId }}, { transaction: t }); //increase contractor's balance
                         
-                        Job.update({ paid: 1 }, { where: { id: jobId }}, { transaction: t }); //update job as paid
+                        Job.update({ paid: 1, paymentDate: new Date() }, { where: { id: jobId }}, { transaction: t }); //update job as paid
         
                         await t.commit();
         
-                        response = {resp_code: "000", resp_desc: `Payment of ${amount} for ${job[0].description} has been made successfully.`}
+                        response = {resp_code: "000", resp_desc: `Payment of ${amount} for ${job.description} has been made successfully.`}
                     
                     } catch (error) {
                         // If the execution reaches this line, an error was thrown.
                         // We rollback the transaction.
                         await t.rollback();
     
-                        response = {resp_code: "999", resp_desc: `Payment of ${amount} for ${job[0].description} failed. Please try again.`}
+                        response = {resp_code: "999", resp_desc: `Payment of ${amount} for ${job.description} failed. Please try again.`}
                     }
                 }
 
@@ -131,7 +131,7 @@ module.exports = {
         const {Job} = req.app.get('models')
         const {Contract, Profile} = req.app.get('models')
         client_id = req.params.userId
-        const deposit_amount = req.body.deposit_amount
+        const deposit_amount = req.body.amount
         let total_amount_unpaid = 0
 
         var response = {}
@@ -142,8 +142,8 @@ module.exports = {
                 [sequelize.fn('sum', sequelize.col('price')), 'total_amount_unpaid'],
             ],
             include: [{
-            model: Contract,
-            where: { status: 'in_progress', ClientId: client_id},
+              model: Contract,
+              where: { status: 'in_progress', ClientId: client_id},
             }],
             raw: true,
         }).then(function(job_result) {
@@ -241,7 +241,7 @@ module.exports = {
         const job = await Job.findAll({
           where: {
             paid: 1,
-            "createdAt": {[Op.between] : [WithoutTime(start) , WithoutTime(end) ]} //date queries as '2022-02-02 00:00:00.000 +00:00' instead of '2022-02-02'
+            "paymentDate": {[Op.between] : [WithoutTime(start) , WithoutTime(end) ]} //date queries as '2022-02-02 00:00:00.000 +00:00' instead of '2022-02-02'
           },
           attributes: [
               "Contract.Client.id",
